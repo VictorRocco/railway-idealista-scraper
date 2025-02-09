@@ -6,6 +6,7 @@ from transitions import Machine
 from typing import Optional, List
 from pathlib import Path
 from dataclasses import dataclass
+import utils  # Add this import at the top
 
 @dataclass
 class Publication:
@@ -20,7 +21,7 @@ class Publication:
         return cls(id=id, title=title, url=url)
 
 class WebScraper:
-    states = ['init', 'loading_page', 'waiting_for_user', 
+    states = ['init', 'loading_page', 'handling_cookies', 'waiting_page_load', 
               'extracting_publications', 'extracting_details', 
               'error', 'completed']
     
@@ -48,15 +49,17 @@ class WebScraper:
 
         # Define transitions
         self.machine.add_transition('load', 'init', 'loading_page')
-        self.machine.add_transition('wait_input', 'loading_page', 'waiting_for_user')
-        self.machine.add_transition('extract', 'waiting_for_user', 'extracting_publications')
+        self.machine.add_transition('handle_cookies', 'loading_page', 'handling_cookies')
+        self.machine.add_transition('wait_load', ['handling_cookies', 'loading_page'], 'waiting_page_load')
+        self.machine.add_transition('extract', 'waiting_page_load', 'extracting_publications')
         self.machine.add_transition('get_details', 'extracting_publications', 'extracting_details')
         self.machine.add_transition('finish', 'extracting_details', 'completed')
         self.machine.add_transition('error', '*', 'error')
 
         # Add callbacks
         self.machine.on_enter_loading_page('on_loading_page')
-        self.machine.on_enter_waiting_for_user('on_waiting_for_user')
+        self.machine.on_enter_handling_cookies('on_handling_cookies')
+        self.machine.on_enter_waiting_page_load('on_waiting_page_load')
         self.machine.on_enter_extracting_publications('on_extracting_publications')
         self.machine.on_enter_extracting_details('on_extracting_details')
 
@@ -69,9 +72,9 @@ class WebScraper:
     def extract_dom_boxes(self, url: str = None, html: str = None, selector: str = None, description: str = "page") -> list:
         if url:
             self.driver.get(url)
-            input("Press any key after the page is loaded, or the popup is closed...")
-            # Wait for the elements to be present
+            utils.random_delay(2, 4)
             WebDriverWait(self.driver, 10).until(EC.presence_of_all_elements_located((By.XPATH, selector)))
+            utils.add_random_noise_to_page(self.driver)
             self.save_page(description)
         
         # Determine if the selector is XPath or CSS
@@ -104,18 +107,44 @@ class WebScraper:
     def on_loading_page(self):
         try:
             self.driver.get(self.current_url)
-            self.wait_input()
+            utils.random_delay(2, 4)  # Add delay after page load
+            utils.add_random_noise_to_page(self.driver)
+            
+            # Check if cookie popup exists
+            try:
+                cookie_button = WebDriverWait(self.driver, 5).until(
+                    EC.presence_of_element_located((By.ID, "didomi-notice-disagree-button"))
+                )
+                self.handle_cookies()
+            except:
+                self.wait_load()
         except Exception as e:
             self.error_message = str(e)
             self.error()
 
-    def on_waiting_for_user(self):
+    def on_handling_cookies(self):
         try:
-            input("Press any key after the page is loaded...")
+            cookie_button = self.driver.find_element(By.ID, "didomi-notice-disagree-button")
+            utils.human_like_click(cookie_button, self.driver)  # Use human-like click
+            print("Cookie popup rejected")
+            self.wait_load()
+        except Exception as e:
+            self.error_message = f"Error handling cookies: {str(e)}"
+            self.error()
+
+    def on_waiting_page_load(self):
+        try:
+            # Wait for the main content to be present
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//article[contains(@class, 'item')]"))
+            )
+            utils.random_delay(1, 2)
+            utils.add_random_noise_to_page(self.driver)
+            print("Page loaded successfully")
             self.save_page("current_page")
             self.extract()
         except Exception as e:
-            self.error_message = str(e)
+            self.error_message = f"Error waiting for page load: {str(e)}"
             self.error()
 
     def on_extracting_publications(self):
