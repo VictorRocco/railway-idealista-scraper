@@ -1,7 +1,4 @@
 import nodriver as nd
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from transitions import Machine
 from typing import Optional, List
 from pathlib import Path
@@ -149,6 +146,24 @@ class WebScraper:
         try:
             logger.info(f"Loading page: {self.current_url}")
             self.page = await self.browser.get(self.current_url)
+            
+            # Add random human-like behavior using JavaScript
+            await self.page.evaluate("""
+                () => {
+                    // Simulate random scrolling
+                    const randomScroll = () => {
+                        const maxScroll = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
+                        const scrollAmount = Math.random() * maxScroll;
+                        window.scrollTo(0, scrollAmount);
+                    };
+                    
+                    // Random scroll a few times
+                    for(let i = 0; i < 3; i++) {
+                        setTimeout(randomScroll, i * 1000);
+                    }
+                }
+            """)
+            
             await asyncio.sleep(random.uniform(2, 4))  # Random delay
             
             # Check for cookie popup using find instead of select
@@ -168,6 +183,8 @@ class WebScraper:
         try:
             cookie_button = await self.page.find('#didomi-notice-disagree-button')
             if cookie_button:
+                # Simulate human-like click with a small delay
+                await asyncio.sleep(random.uniform(0.5, 1.5))
                 await cookie_button.click()
                 logger.info("Cookie popup rejected")
                 self.wait_load()
@@ -194,6 +211,27 @@ class WebScraper:
             
             if not elements:
                 raise Exception("Timeout waiting for articles to appear")
+            
+            # Add random scrolling behavior using JavaScript
+            await self.page.evaluate("""
+                () => {
+                    const maxScroll = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
+                    const scrollSteps = 5;
+                    const scrollDelay = 500;
+                    
+                    for(let i = 0; i < scrollSteps; i++) {
+                        setTimeout(() => {
+                            const scrollAmount = (i + 1) * (maxScroll / scrollSteps);
+                            window.scrollTo({
+                                top: scrollAmount,
+                                behavior: 'smooth'
+                            });
+                        }, i * scrollDelay);
+                    }
+                }
+            """)
+            
+            await asyncio.sleep(random.uniform(1.5, 3.0))
                 
             await self.save_page("current_page")
             logger.info("Page loaded successfully")
